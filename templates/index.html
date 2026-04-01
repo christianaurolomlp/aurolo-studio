@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aurolo Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: '#0a0a0f',
+                        darker: '#06060a',
+                        card: '#111118',
+                        border: '#1a1a25',
+                        neon: '#00e676',
+                        'neon-dim': '#00c853',
+                        'neon-glow': 'rgba(0, 230, 118, 0.15)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .neon-border { border: 1px solid rgba(0, 230, 118, 0.3); }
+        .neon-glow { box-shadow: 0 0 20px rgba(0, 230, 118, 0.1); }
+        .neon-text { text-shadow: 0 0 10px rgba(0, 230, 118, 0.5); }
+        .clip-card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0, 230, 118, 0.1); }
+        .clip-card { transition: all 0.2s ease; }
+        .status-badge { font-size: 0.65rem; letter-spacing: 0.05em; }
+        .btn-approve:hover { background: rgba(0, 230, 118, 0.2); }
+        .btn-reject:hover { background: rgba(239, 68, 68, 0.2); }
+        .caption-box { max-height: 120px; overflow-y: auto; }
+        .caption-box::-webkit-scrollbar { width: 4px; }
+        .caption-box::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+        video { background: #000; }
+        .toast {
+            position: fixed; bottom: 24px; right: 24px; z-index: 1000;
+            padding: 12px 20px; border-radius: 8px; font-size: 0.875rem;
+            animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s;
+            opacity: 0; animation-fill-mode: forwards;
+        }
+        @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+        .tab-active { border-bottom: 2px solid #00e676; color: #00e676; }
+        .tab-inactive { border-bottom: 2px solid transparent; color: #666; }
+        .tab-inactive:hover { color: #999; }
+        .filter-active { background: rgba(0, 230, 118, 0.15); color: #00e676; border-color: rgba(0, 230, 118, 0.3); }
+    </style>
+</head>
+<body class="bg-dark text-white min-h-screen">
+    <div id="app">
+        <!-- Header -->
+        <header class="border-b border-border bg-darker/80 backdrop-blur-sm sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto px-4 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <h1 class="text-2xl font-black tracking-tight">
+                            <span class="text-neon neon-text">AUROLO</span>
+                            <span class="text-white/80">STUDIO</span>
+                        </h1>
+                        <span class="text-xs text-white/30 bg-white/5 px-2 py-0.5 rounded-full">BETA</span>
+                    </div>
+                    <div id="stats-bar" class="flex gap-6 text-sm">
+                        <!-- Stats loaded via JS -->
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 py-6">
+            <!-- Stream Selector -->
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                    <select id="stream-select" class="bg-card border border-border rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-neon/50">
+                        <option value="">Seleccionar stream...</option>
+                    </select>
+                    <span id="stream-info" class="text-xs text-white/40"></span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="filterClips('all')" class="filter-btn px-3 py-1.5 text-xs rounded-lg border border-border transition" data-filter="all">Todos</button>
+                    <button onclick="filterClips('pending')" class="filter-btn px-3 py-1.5 text-xs rounded-lg border border-border transition" data-filter="pending">⏳ Pendientes</button>
+                    <button onclick="filterClips('approved')" class="filter-btn px-3 py-1.5 text-xs rounded-lg border border-border transition" data-filter="approved">✅ Aprobados</button>
+                    <button onclick="filterClips('rejected')" class="filter-btn px-3 py-1.5 text-xs rounded-lg border border-border transition" data-filter="rejected">❌ Rechazados</button>
+                    <button onclick="filterClips('tiktok')" class="filter-btn px-3 py-1.5 text-xs rounded-lg border border-border transition" data-filter="tiktok">🎵 TikTok</button>
+                    <button onclick="filterClips('youtube')" class="filter-btn px-3 py-1.5 text-xs rounded-lg border border-border transition" data-filter="youtube">▶️ YouTube</button>
+                </div>
+            </div>
+
+            <!-- Clips Grid -->
+            <div id="clips-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Populated by JS -->
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="text-center py-20 hidden">
+                <div class="text-4xl mb-3">🎬</div>
+                <p class="text-white/40 text-lg">Selecciona un stream para ver sus clips</p>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
