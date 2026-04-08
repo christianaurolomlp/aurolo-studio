@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -7,6 +7,8 @@ from database import init_db, get_db, Stream, Clip
 from pydantic import BaseModel
 from typing import Optional
 import os
+import subprocess
+import json
 
 app = FastAPI(title="Aurolo Studio")
 
@@ -136,6 +138,78 @@ def serve_clip_video(clip_id: int, db: Session = Depends(get_db)):
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="File not found on disk")
     return FileResponse(filepath, media_type="video/mp4")
+
+
+# --- API: Upload Clip ---
+def _get_duration(filepath: str) -> float:
+    """Get video duration using ffprobe."""
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", filepath],
+            capture_output=True, text=True
+        )
+        data = json.loads(result.stdout)
+        return float(data.get("format", {}).get("duration", 0))
+    except Exception:
+        return 0.0
+
+
+@app.post("/api/streams/{stream_id}/clips")
+async def upload_clip(
+    stream_id: int,
+    video: UploadFile = File(...),
+    platform: str = Form(...),
+    title: str = Form(...),
+    score: float = Form(5.0),
+    caption_tiktok: Optional[str] = Form(None),
+    caption_youtube: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    """Upload a clip video file and create DB record."""
+    stream = db.query(Stream).filter(Stream.id == stream_id).first()
+    if not stream:
+        raise HTTPException(status_code=404, detail="Stream not found")
+
+    if platform not in ("tiktok", "youtube"):
+        raise HTTPException(status_code=400, detail="Platform must be 'tiktok' or 'youtube'")
+
+    # Ensure clips dir exists
+    os.makedirs(CLIPS_DIR, exist_ok=True)
+
+    # Save file
+    filename = video.filename or f"clip_{stream_id}_{platform}.mp4"
+    filepath = os.path.join(CLIPS_DIR, filename)
+    content = await video.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    # Get duration
+    duration = _get_duration(filepath)
+
+    # Create DB record
+    clip = Clip(
+        stream_id=stream_id,
+        filename=filename,
+        platform=platform,
+        title=title,
+        score=score,
+        status="pending",
+        caption_tiktok=caption_tiktok,
+        caption_youtube=caption_youtube,
+        duration=duration,
+    )
+    db.add(clip)
+    db.commit()
+    db.refresh(clip)
+
+    return {
+        "id": clip.id,
+        "filename": clip.filename,
+        "platform": clip.platform,
+        "title": clip.title,
+        "duration": clip.duration,
+        "status": clip.status,
+    }
 
 
 # --- API: Stats ---
