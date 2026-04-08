@@ -1,13 +1,14 @@
-// Aurolo Studio — Frontend
+// Aurolo Studio — Frontend (Linear Dark Design)
 const API = '';
 let allClips = [];
 let currentFilter = 'all';
-let activePlatform = {}; // clipTitle → 'tiktok' | 'youtube'
+let activePlatform = {};
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
     loadStats();
     loadStreams();
+    document.querySelector('.filter-btn[data-filter="all"]')?.classList.add('filter-active');
 });
 
 // --- Stats ---
@@ -15,23 +16,32 @@ async function loadStats() {
     try {
         const res = await fetch(`${API}/api/stats`);
         const s = await res.json();
+
+        // Update pending badge in header
+        const pendingBadge = document.getElementById('pending-badge');
+        const pendingCount = document.getElementById('pending-count');
+        if (s.pending > 0) {
+            pendingBadge.style.display = 'inline-flex';
+            pendingCount.textContent = s.pending;
+        } else {
+            pendingBadge.style.display = 'none';
+        }
+
         document.getElementById('stats-bar').innerHTML = `
-            <div class="flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-neon"></span>
-                <span class="text-white/60">${s.total_clips} clips</span>
+            <div class="stat-item">
+                <span class="stat-dot accent"></span>
+                <span class="stat-value">${s.total_clips}</span> clips
             </div>
-            <div class="flex items-center gap-1.5">
-                <span class="text-neon font-semibold">${s.approved}</span>
-                <span class="text-white/40">aprobados</span>
+            <div class="stat-item">
+                <span class="stat-dot green"></span>
+                <span class="stat-value">${s.approved}</span> aprobados
             </div>
-            <div class="flex items-center gap-1.5">
-                <span class="text-yellow-400 font-semibold">${s.pending}</span>
-                <span class="text-white/40">pendientes</span>
+            <div class="stat-item">
+                <span class="stat-dot yellow"></span>
+                <span class="stat-value">${s.pending}</span> pendientes
             </div>
-            <div class="flex items-center gap-1.5">
-                <span class="text-white/40">${s.tiktok} TT</span>
-                <span class="text-white/20">|</span>
-                <span class="text-white/40">${s.youtube} YT</span>
+            <div class="stat-item">
+                ${s.tiktok} TT · ${s.youtube} YT
             </div>
         `;
     } catch (e) { console.error('Stats error:', e); }
@@ -79,7 +89,6 @@ function filterClips(filter) {
     renderClips();
 }
 
-// Group clips by title (pair TikTok + YouTube together)
 function groupClipsByMoment(clips) {
     const groups = {};
     clips.forEach(clip => {
@@ -92,133 +101,97 @@ function groupClipsByMoment(clips) {
 
 function renderClips() {
     const grid = document.getElementById('clips-grid');
-
-    // Filter raw clips first if platform-specific
     let filtered = allClips;
-    if (currentFilter === 'pending' || currentFilter === 'approved' || currentFilter === 'rejected') {
+
+    if (['pending', 'approved', 'rejected'].includes(currentFilter)) {
         filtered = allClips.filter(c => c.status === currentFilter);
-    } else if (currentFilter === 'tiktok') {
-        filtered = allClips.filter(c => c.platform === 'tiktok');
-    } else if (currentFilter === 'youtube') {
-        filtered = allClips.filter(c => c.platform === 'youtube');
+    } else if (currentFilter === 'tiktok' || currentFilter === 'youtube') {
+        filtered = allClips.filter(c => c.platform === currentFilter);
     }
 
     if (filtered.length === 0) {
-        grid.innerHTML = `<div class="col-span-full text-center py-16"><p class="text-white/30">No hay clips con este filtro</p></div>`;
+        grid.innerHTML = `<div class="col-span-full empty-state" style="padding:60px 20px"><p class="empty-text">No hay clips con este filtro</p></div>`;
         return;
     }
 
-    // Group by moment if showing all or status filter
     if (['all', 'pending', 'approved', 'rejected'].includes(currentFilter)) {
         const groups = groupClipsByMoment(filtered);
         grid.innerHTML = groups.map(g => renderGroupCard(g)).join('');
     } else {
-        // Platform-specific: show individual cards
         grid.innerHTML = filtered.map(clip => renderSingleCard(clip)).join('');
     }
 }
 
-// --- Grouped card (1 card per moment, TikTok/YouTube toggle) ---
+// --- Grouped card ---
 function renderGroupCard(group) {
     const key = group.title;
     const platform = activePlatform[key] || (group.tiktok ? 'tiktok' : 'youtube');
     const clip = group[platform];
     if (!clip) return '';
 
-    const otherPlatform = platform === 'tiktok' ? 'youtube' : 'tiktok';
-    const otherClip = group[otherPlatform];
-
-    const statusColors = {
-        pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-        approved: 'bg-green-500/20 text-green-400 border-green-500/30',
-        rejected: 'bg-red-500/20 text-red-400 border-red-500/30',
-    };
-    const statusLabels = { pending: 'PENDIENTE', approved: 'APROBADO', rejected: 'RECHAZADO' };
+    const statusClass = { pending: 'status-pending', approved: 'status-approved', rejected: 'status-rejected' };
+    const statusLabel = { pending: 'PENDIENTE', approved: 'APROBADO', rejected: 'RECHAZADO' };
     const scoreBar = Math.min(clip.score * 10, 100);
     const caption = platform === 'tiktok' ? clip.caption_tiktok : clip.caption_youtube;
 
     return `
-    <div class="clip-card bg-card rounded-xl border border-border overflow-hidden" data-id="${clip.id}" id="group-${encodeURIComponent(key)}">
-        <!-- Video -->
-        <div class="relative aspect-[9/16] max-h-[360px] bg-black">
-            <video class="w-full h-full object-contain" preload="metadata" controls
-                src="/api/clips/${clip.id}/video">
-            </video>
-            <div class="absolute top-2 left-2 flex gap-1.5">
-                <span class="status-badge px-2 py-0.5 rounded-full border ${statusColors[clip.status]}">
-                    ${statusLabels[clip.status]}
-                </span>
+    <div class="clip-card" data-id="${clip.id}" id="group-${encodeURIComponent(key)}">
+        <div class="clip-video-wrap">
+            <video preload="metadata" controls src="/api/clips/${clip.id}/video"></video>
+            <div class="clip-badges">
+                <span class="status-badge ${statusClass[clip.status]}">${statusLabel[clip.status]}</span>
             </div>
-            ${clip.duration ? `<span class="absolute bottom-2 right-2 text-xs bg-black/70 px-2 py-0.5 rounded">${formatDuration(clip.duration)}</span>` : ''}
+            ${clip.duration ? `<span class="clip-duration">${formatDuration(clip.duration)}</span>` : ''}
         </div>
+        <div class="clip-info">
+            <h3 class="clip-title">${escapeHtml(clip.title)}</h3>
 
-        <!-- Info -->
-        <div class="p-4">
-            <h3 class="font-semibold text-sm leading-tight mb-2 line-clamp-2">${escapeHtml(clip.title)}</h3>
-
-            <!-- Score -->
-            <div class="flex items-center gap-2 mb-3">
-                <span class="text-xs text-white/40">Score</span>
-                <div class="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                    <div class="h-full bg-neon rounded-full" style="width: ${scoreBar}%"></div>
+            <div class="score-row">
+                <span class="score-label">Score</span>
+                <div class="score-track">
+                    <div class="score-fill" style="width: ${scoreBar}%"></div>
                 </div>
-                <span class="text-xs font-semibold text-neon">${clip.score.toFixed(1)}</span>
+                <span class="score-value">${clip.score.toFixed(1)}</span>
             </div>
 
-            <!-- Platform toggle -->
-            <div class="flex gap-1.5 mb-3">
+            <div class="platform-toggle">
                 <button onclick="switchPlatform('${escapeHtml(key)}', 'tiktok')"
-                    class="flex-1 py-1.5 text-xs rounded-lg border transition font-medium
-                    ${platform === 'tiktok' ? 'bg-neon/15 border-neon/40 text-neon' : 'border-border text-white/40 hover:text-white/70'}
-                    ${!group.tiktok ? 'opacity-30 cursor-not-allowed' : ''}">
+                    class="platform-btn ${platform === 'tiktok' ? 'active-tiktok' : ''} ${!group.tiktok ? 'disabled' : ''}">
                     🎵 TikTok
                 </button>
                 <button onclick="switchPlatform('${escapeHtml(key)}', 'youtube')"
-                    class="flex-1 py-1.5 text-xs rounded-lg border transition font-medium
-                    ${platform === 'youtube' ? 'bg-red-500/15 border-red-500/40 text-red-400' : 'border-border text-white/40 hover:text-white/70'}
-                    ${!group.youtube ? 'opacity-30 cursor-not-allowed' : ''}">
+                    class="platform-btn ${platform === 'youtube' ? 'active-youtube' : ''} ${!group.youtube ? 'disabled' : ''}">
                     ▶️ YouTube
                 </button>
             </div>
 
-            <!-- Caption -->
-            <div class="caption-box text-xs text-white/50 bg-darker rounded-lg p-3 mb-3">
-                <pre class="whitespace-pre-wrap font-sans">${escapeHtml(caption || 'Sin caption')}</pre>
-                <button onclick="copyText(${JSON.stringify(caption || '')})" class="mt-2 text-neon hover:underline text-xs">📋 Copiar</button>
+            <div class="caption-box">
+                <pre>${escapeHtml(caption || 'Sin caption')}</pre>
+                <button onclick="copyText(${JSON.stringify(caption || '')})" class="caption-copy">📋 Copiar</button>
             </div>
 
-            <!-- Actions (apply to both TT + YT of same moment) -->
-            <div class="flex gap-2">
-                ${clip.status !== 'approved' ? `
-                <button onclick="approveMoment('${escapeHtml(key)}')" class="btn-approve flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg border border-neon/30 text-neon text-xs font-medium transition">
-                    ✅ Aprobar
-                </button>` : ''}
-                ${clip.status !== 'rejected' ? `
-                <button onclick="rejectMoment('${escapeHtml(key)}')" class="btn-reject flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg border border-red-500/30 text-red-400 text-xs font-medium transition">
-                    ❌ Rechazar
-                </button>` : ''}
-                <a href="/api/clips/${clip.id}/download" class="flex items-center justify-center px-3 py-2 rounded-lg border border-border text-white/50 text-xs hover:text-white hover:border-white/30 transition" download>⬇️</a>
+            <div class="clip-actions">
+                ${clip.status !== 'approved' ? `<button onclick="approveMoment('${escapeHtml(key)}')" class="btn-action btn-approve">✅ Aprobar</button>` : ''}
+                ${clip.status !== 'rejected' ? `<button onclick="rejectMoment('${escapeHtml(key)}')" class="btn-action btn-reject">❌ Rechazar</button>` : ''}
+                <a href="/api/clips/${clip.id}/download" class="btn-action btn-download" download>⬇️</a>
             </div>
         </div>
     </div>`;
 }
 
-// Switch TikTok/YouTube within a grouped card
 function switchPlatform(title, platform) {
     activePlatform[title] = platform;
     renderClips();
 }
 
-// Approve/reject both TikTok + YouTube of same moment
 async function approveMoment(title) {
     const clips = allClips.filter(c => c.title === title);
     for (const c of clips) {
         await fetch(`${API}/api/clips/${c.id}/approve`, { method: 'POST' });
         c.status = 'approved';
     }
-    renderClips();
-    loadStats();
-    showToast(`Clip aprobado ✅`);
+    renderClips(); loadStats();
+    showToast('Clip aprobado ✅');
 }
 
 async function rejectMoment(title) {
@@ -227,49 +200,44 @@ async function rejectMoment(title) {
         await fetch(`${API}/api/clips/${c.id}/reject`, { method: 'POST' });
         c.status = 'rejected';
     }
-    renderClips();
-    loadStats();
-    showToast(`Clip rechazado ❌`);
+    renderClips(); loadStats();
+    showToast('Clip rechazado ❌');
 }
 
-// --- Single card (platform-specific filter view) ---
+// --- Single card ---
 function renderSingleCard(clip) {
-    const statusColors = {
-        pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-        approved: 'bg-green-500/20 text-green-400 border-green-500/30',
-        rejected: 'bg-red-500/20 text-red-400 border-red-500/30',
-    };
-    const statusLabels = { pending: 'PENDIENTE', approved: 'APROBADO', rejected: 'RECHAZADO' };
+    const statusClass = { pending: 'status-pending', approved: 'status-approved', rejected: 'status-rejected' };
+    const statusLabel = { pending: 'PENDIENTE', approved: 'APROBADO', rejected: 'RECHAZADO' };
     const platformIcon = clip.platform === 'tiktok' ? '🎵' : '▶️';
     const scoreBar = Math.min(clip.score * 10, 100);
     const caption = clip.platform === 'tiktok' ? clip.caption_tiktok : clip.caption_youtube;
 
     return `
-    <div class="clip-card bg-card rounded-xl border border-border overflow-hidden" data-id="${clip.id}">
-        <div class="relative aspect-[9/16] max-h-[360px] bg-black">
-            <video class="w-full h-full object-contain" preload="metadata" controls src="/api/clips/${clip.id}/video"></video>
-            <div class="absolute top-2 left-2 flex gap-1.5">
-                <span class="status-badge px-2 py-0.5 rounded-full border ${statusColors[clip.status]}">${statusLabels[clip.status]}</span>
-                <span class="status-badge px-2 py-0.5 rounded-full bg-white/10 text-white/60 border border-white/10">${platformIcon} ${clip.platform.toUpperCase()}</span>
+    <div class="clip-card" data-id="${clip.id}">
+        <div class="clip-video-wrap">
+            <video preload="metadata" controls src="/api/clips/${clip.id}/video"></video>
+            <div class="clip-badges">
+                <span class="status-badge ${statusClass[clip.status]}">${statusLabel[clip.status]}</span>
+                <span class="platform-badge">${platformIcon} ${clip.platform.toUpperCase()}</span>
             </div>
         </div>
-        <div class="p-4">
-            <h3 class="font-semibold text-sm leading-tight mb-2 line-clamp-2">${escapeHtml(clip.title)}</h3>
-            <div class="flex items-center gap-2 mb-3">
-                <span class="text-xs text-white/40">Score</span>
-                <div class="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                    <div class="h-full bg-neon rounded-full" style="width: ${scoreBar}%"></div>
+        <div class="clip-info">
+            <h3 class="clip-title">${escapeHtml(clip.title)}</h3>
+            <div class="score-row">
+                <span class="score-label">Score</span>
+                <div class="score-track">
+                    <div class="score-fill" style="width: ${scoreBar}%"></div>
                 </div>
-                <span class="text-xs font-semibold text-neon">${clip.score.toFixed(1)}</span>
+                <span class="score-value">${clip.score.toFixed(1)}</span>
             </div>
-            <div class="caption-box text-xs text-white/50 bg-darker rounded-lg p-3 mb-3">
-                <pre class="whitespace-pre-wrap font-sans">${escapeHtml(caption || 'Sin caption')}</pre>
-                <button onclick="copyText(${JSON.stringify(caption || '')})" class="mt-2 text-neon hover:underline text-xs">📋 Copiar</button>
+            <div class="caption-box">
+                <pre>${escapeHtml(caption || 'Sin caption')}</pre>
+                <button onclick="copyText(${JSON.stringify(caption || '')})" class="caption-copy">📋 Copiar</button>
             </div>
-            <div class="flex gap-2">
-                ${clip.status !== 'approved' ? `<button onclick="approveClip(${clip.id})" class="btn-approve flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg border border-neon/30 text-neon text-xs font-medium transition">✅ Aprobar</button>` : ''}
-                ${clip.status !== 'rejected' ? `<button onclick="rejectClip(${clip.id})" class="btn-reject flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg border border-red-500/30 text-red-400 text-xs font-medium transition">❌ Rechazar</button>` : ''}
-                <a href="/api/clips/${clip.id}/download" class="flex items-center justify-center px-3 py-2 rounded-lg border border-border text-white/50 text-xs hover:text-white transition" download>⬇️</a>
+            <div class="clip-actions">
+                ${clip.status !== 'approved' ? `<button onclick="approveClip(${clip.id})" class="btn-action btn-approve">✅ Aprobar</button>` : ''}
+                ${clip.status !== 'rejected' ? `<button onclick="rejectClip(${clip.id})" class="btn-action btn-reject">❌ Rechazar</button>` : ''}
+                <a href="/api/clips/${clip.id}/download" class="btn-action btn-download" download>⬇️</a>
             </div>
         </div>
     </div>`;
@@ -318,10 +286,8 @@ function showToast(msg, type = 'success') {
     const existing = document.querySelector('.toast');
     if (existing) existing.remove();
     const toast = document.createElement('div');
-    toast.className = `toast ${type === 'success' ? 'bg-neon/20 text-neon border border-neon/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`;
+    toast.className = `toast ${type === 'success' ? 'toast-success' : 'toast-error'}`;
     toast.textContent = msg;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
 }
-
-document.querySelector('.filter-btn[data-filter="all"]')?.classList.add('filter-active');
