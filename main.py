@@ -269,3 +269,24 @@ async def delete_all_clips(stream_id: int, db: Session = Depends(get_db)):
         count += 1
     db.commit()
     return {"ok": True, "deleted": count}
+
+
+@app.patch("/api/clips/{clip_id}")
+async def update_clip(clip_id: int, data: dict, db: Session = Depends(get_db)):
+    """Update clip captions/metadata."""
+    clip = db.query(Clip).filter(Clip.id == clip_id).first()
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    
+    if "caption_tiktok" in data:
+        clip.caption_tiktok = data["caption_tiktok"]
+    if "caption_youtube" in data:
+        clip.caption_youtube = data["caption_youtube"]
+    if "title" in data:
+        clip.title = data["title"]
+    if "score" in data:
+        clip.score = data["score"]
+    
+    db.commit()
+    db.refresh(clip)
+    return {"ok": True, "id": clip.id}
