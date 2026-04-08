@@ -231,3 +231,41 @@ def get_stats(db: Session = Depends(get_db)):
         "tiktok": tiktok,
         "youtube": youtube,
     }
+
+
+@app.delete("/api/clips/{clip_id}")
+async def delete_clip(clip_id: int, db: Session = Depends(get_db)):
+    """Delete a clip and its video file."""
+    clip = db.query(Clip).filter(Clip.id == clip_id).first()
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    
+    # Delete video file if exists
+    if clip.video_path and os.path.exists(clip.video_path):
+        try:
+            os.remove(clip.video_path)
+        except Exception:
+            pass
+    
+    db.delete(clip)
+    db.commit()
+    return {"ok": True, "deleted_id": clip_id}
+
+
+@app.delete("/api/streams/{stream_id}/clips")
+async def delete_all_clips(stream_id: int, db: Session = Depends(get_db)):
+    """Delete ALL clips for a stream."""
+    clips = db.query(Clip).filter(Clip.id.in_(
+        [c.id for c in db.query(Clip).filter(Clip.stream_id == stream_id).all()]
+    )).all()
+    count = 0
+    for clip in clips:
+        if clip.video_path and os.path.exists(clip.video_path):
+            try:
+                os.remove(clip.video_path)
+            except Exception:
+                pass
+        db.delete(clip)
+        count += 1
+    db.commit()
+    return {"ok": True, "deleted": count}
