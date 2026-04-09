@@ -103,7 +103,7 @@ function renderClips() {
     const grid = document.getElementById('clips-grid');
     let filtered = allClips;
 
-    if (['pending', 'approved', 'rejected'].includes(currentFilter)) {
+    if (['pending', 'approved', 'rejected', 'published'].includes(currentFilter)) {
         filtered = allClips.filter(c => c.status === currentFilter);
     } else if (currentFilter === 'tiktok' || currentFilter === 'youtube') {
         filtered = allClips.filter(c => c.platform === currentFilter);
@@ -114,7 +114,7 @@ function renderClips() {
         return;
     }
 
-    if (['all', 'pending', 'approved', 'rejected'].includes(currentFilter)) {
+    if (['all', 'pending', 'approved', 'rejected', 'published'].includes(currentFilter)) {
         const groups = groupClipsByMoment(filtered);
         grid.innerHTML = groups.map(g => renderGroupCard(g)).join('');
     } else {
@@ -130,8 +130,8 @@ function renderGroupCard(group) {
     const clip = group[platform] || group.tiktok || group.youtube;
     if (!clip) return '';
 
-    const statusClass = { pending: 'status-pending', approved: 'status-approved', rejected: 'status-rejected' };
-    const statusLabel = { pending: 'PENDIENTE', approved: 'APROBADO', rejected: 'RECHAZADO' };
+    const statusClass = { pending: 'status-pending', approved: 'status-approved', rejected: 'status-rejected', published: 'status-published' };
+    const statusLabel = { pending: 'PENDIENTE', approved: 'APROBADO', rejected: 'RECHAZADO', published: 'PUBLICADO' };
     const scoreBar = Math.min(clip.score * 10, 100);
     // Always use caption for selected platform tab regardless of which clip record we have
     const caption = platform === 'tiktok' ? (clip.caption_tiktok || clip.caption_youtube) : (clip.caption_youtube || clip.caption_tiktok);
@@ -173,6 +173,7 @@ function renderGroupCard(group) {
             </div>
 
             <div class="clip-actions">
+                ${clip.status === 'approved' ? `<button onclick="publishMoment('${escapeHtml(key)}')" class="btn-action btn-publish">Publicado</button>` : ''}
                 ${clip.status !== 'approved' ? `<button onclick="approveMoment('${escapeHtml(key)}')" class="btn-action btn-approve">✅ Aprobar</button>` : ''}
                 ${clip.status !== 'rejected' ? `<button onclick="rejectMoment('${escapeHtml(key)}')" class="btn-action btn-reject">❌ Rechazar</button>` : ''}
                 <a href="/api/clips/${clip.id}/download" class="btn-action btn-download" download>⬇️</a>
@@ -200,6 +201,20 @@ function switchPlatform(title, platform) {
     card.replaceWith(newCardEl);
 }
 
+async function publishMoment(title) {
+    const clips = allClips.filter(c => c.title === title);
+    for (const c of clips) {
+        await fetch(`${API}/api/clips/${c.id}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({status: 'published'})
+        });
+        c.status = 'published';
+    }
+    renderClips(); loadStats();
+    showToast('Marcado como publicado');
+}
+
 async function approveMoment(title) {
     const clips = allClips.filter(c => c.title === title);
     for (const c of clips) {
@@ -222,8 +237,8 @@ async function rejectMoment(title) {
 
 // --- Single card ---
 function renderSingleCard(clip) {
-    const statusClass = { pending: 'status-pending', approved: 'status-approved', rejected: 'status-rejected' };
-    const statusLabel = { pending: 'PENDIENTE', approved: 'APROBADO', rejected: 'RECHAZADO' };
+    const statusClass = { pending: 'status-pending', approved: 'status-approved', rejected: 'status-rejected', published: 'status-published' };
+    const statusLabel = { pending: 'PENDIENTE', approved: 'APROBADO', rejected: 'RECHAZADO', published: 'PUBLICADO' };
     const platformIcon = clip.platform === 'tiktok' ? '🎵' : '▶️';
     const scoreBar = Math.min(clip.score * 10, 100);
     const caption = clip.platform === 'tiktok' ? clip.caption_tiktok : clip.caption_youtube;
