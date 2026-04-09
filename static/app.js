@@ -169,7 +169,7 @@ function renderGroupCard(group) {
 
             <div class="caption-box">
                 <pre>${escapeHtml(caption || 'Sin caption')}</pre>
-                <button onclick="copyText(${JSON.stringify(caption || '')})" class="caption-copy">📋 Copiar</button>
+                <button class="caption-copy btn-copy" data-text="${escapeHtml(caption || '')}">📋 Copiar</button>
             </div>
 
             <div class="clip-actions">
@@ -263,7 +263,7 @@ function renderSingleCard(clip) {
             </div>
             <div class="caption-box">
                 <pre>${escapeHtml(caption || 'Sin caption')}</pre>
-                <button onclick="copyText(${JSON.stringify(caption || '')})" class="caption-copy">📋 Copiar</button>
+                <button class="caption-copy btn-copy" data-text="${escapeHtml(caption || '')}">📋 Copiar</button>
             </div>
             <div class="clip-actions">
                 ${clip.status !== 'approved' ? `<button onclick="approveClip(${clip.id})" class="btn-action btn-approve">✅ Aprobar</button>` : ''}
@@ -335,3 +335,29 @@ function showToast(msg, type = 'success') {
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
 }
+
+// Copy button event delegation (avoids inline onclick issues with special chars)
+document.addEventListener('click', async function(e) {
+    const btn = e.target.closest('.btn-copy');
+    if (!btn) return;
+    const text = btn.getAttribute('data-text') || '';
+    // Unescape HTML entities
+    const ta = document.createElement('textarea');
+    ta.innerHTML = text;
+    const decoded = ta.value;
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(decoded);
+        } else {
+            ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+            ta.value = decoded;
+            document.body.appendChild(ta);
+            ta.focus(); ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+        showToast('Caption copiado ✅');
+    } catch(err) {
+        window.prompt('Copia este texto:', decoded);
+    }
+});
