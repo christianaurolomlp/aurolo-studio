@@ -332,7 +332,7 @@ body {
   text-align: center;
 }
 
-.platform-btn:hover:not(.disabled) {
+.platform-btn:hover {
   border-color: var(--border-hover);
   color: var(--text-secondary);
 }
@@ -349,10 +349,7 @@ body {
   color: var(--red);
 }
 
-.platform-btn.disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
+/* .platform-btn.disabled - removed, both platforms always available */
 
 /* Caption box */
 .caption-box {
