@@ -560,3 +560,20 @@ body {
 /* ─── Utility ────────────────────────── */
 .hidden { display: none !important; }
 .col-span-full { grid-column: 1 / -1; }
+
+/* Published status */
+.status-published {
+  background: rgba(88, 166, 255, 0.15);
+  border-color: rgba(88, 166, 255, 0.4);
+  color: #58a6ff;
+}
+
+.btn-publish {
+  background: rgba(88, 166, 255, 0.1);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  color: #58a6ff;
+}
+
+.btn-publish:hover {
+  background: rgba(88, 166, 255, 0.2);
+}
