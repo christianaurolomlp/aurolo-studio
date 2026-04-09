@@ -291,10 +291,23 @@ function escapeHtml(text) {
 
 async function copyText(text) {
     try {
-        await navigator.clipboard.writeText(text);
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            // Fallback for mobile/non-focus contexts
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
         showToast('Caption copiado ✅');
     } catch (e) {
-        showToast('Error al copiar', 'error');
+        // Last resort: show text in prompt for manual copy
+        window.prompt('Copia este texto:', text);
     }
 }
 
