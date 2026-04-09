@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Form
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -9,6 +9,7 @@ from typing import Optional
 import os
 import subprocess
 import json
+import requests as http_requests
 
 app = FastAPI(title="Aurolo Studio")
 
@@ -16,8 +17,14 @@ app = FastAPI(title="Aurolo Studio")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# Clips directory (configurable)
-CLIPS_DIR = os.getenv("CLIPS_DIR", "./clips")
+# Clips local dir (temporary fallback)
+CLIPS_DIR = os.getenv("CLIPS_DIR", "/tmp/clips")
+
+# GitHub config for permanent video storage
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+GITHUB_REPO = os.getenv("GITHUB_REPO", "christianaurolomlp/aurolo-studio-clips")
+GITHUB_RELEASE_TAG = os.getenv("GITHUB_RELEASE_TAG", "clips-latest")
+
 
 # Init DB on startup
 @app.on_event("startup")
@@ -75,6 +82,16 @@ def create_stream(data: StreamCreate, db: Session = Depends(get_db)):
     return {"id": stream.id, "title": stream.title}
 
 
+@app.delete("/api/streams/{stream_id}")
+def delete_stream(stream_id: int, db: Session = Depends(get_db)):
+    stream = db.query(Stream).filter(Stream.id == stream_id).first()
+    if not stream:
+        raise HTTPException(status_code=404, detail="Stream not found")
+    db.delete(stream)
+    db.commit()
+    return {"ok": True}
+
+
 # --- API: Clips ---
 @app.get("/api/streams/{stream_id}/clips")
 def get_clips(stream_id: int, db: Session = Depends(get_db)):
@@ -93,6 +110,26 @@ def get_clips(stream_id: int, db: Session = Depends(get_db)):
         "caption_tiktok": c.caption_tiktok,
         "caption_youtube": c.caption_youtube,
         "duration": c.duration,
+        "video_url": c.video_url,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+    } for c in clips]
+
+
+@app.get("/api/clips")
+def get_all_clips(db: Session = Depends(get_db)):
+    clips = db.query(Clip).order_by(Clip.created_at.desc()).all()
+    return [{
+        "id": c.id,
+        "stream_id": c.stream_id,
+        "filename": c.filename,
+        "platform": c.platform,
+        "title": c.title,
+        "score": c.score,
+        "status": c.status,
+        "caption_tiktok": c.caption_tiktok,
+        "caption_youtube": c.caption_youtube,
+        "duration": c.duration,
+        "video_url": c.video_url,
         "created_at": c.created_at.isoformat() if c.created_at else None,
     } for c in clips]
 
@@ -117,32 +154,41 @@ def reject_clip(clip_id: int, db: Session = Depends(get_db)):
     return {"id": clip.id, "status": clip.status}
 
 
+@app.get("/api/clips/{clip_id}/video")
+def serve_clip_video(clip_id: int, db: Session = Depends(get_db)):
+    """Serve clip video - redirect to permanent URL if available."""
+    clip = db.query(Clip).filter(Clip.id == clip_id).first()
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip not found")
+
+    # Prefer permanent URL
+    if clip.video_url:
+        return RedirectResponse(url=clip.video_url)
+
+    # Fallback to local file
+    filepath = os.path.join(CLIPS_DIR, clip.filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Video not available. Please re-run the pipeline.")
+    return FileResponse(filepath, media_type="video/mp4")
+
+
 @app.get("/api/clips/{clip_id}/download")
 def download_clip(clip_id: int, db: Session = Depends(get_db)):
     clip = db.query(Clip).filter(Clip.id == clip_id).first()
     if not clip:
         raise HTTPException(status_code=404, detail="Clip not found")
+
+    if clip.video_url:
+        return RedirectResponse(url=clip.video_url)
+
     filepath = os.path.join(CLIPS_DIR, clip.filename)
     if not os.path.exists(filepath):
-        raise HTTPException(status_code=404, detail="File not found on disk")
+        raise HTTPException(status_code=404, detail="File not found")
     return FileResponse(filepath, filename=clip.filename, media_type="video/mp4")
-
-
-@app.get("/api/clips/{clip_id}/video")
-def serve_clip_video(clip_id: int, db: Session = Depends(get_db)):
-    """Serve clip video for HTML5 player."""
-    clip = db.query(Clip).filter(Clip.id == clip_id).first()
-    if not clip:
-        raise HTTPException(status_code=404, detail="Clip not found")
-    filepath = os.path.join(CLIPS_DIR, clip.filename)
-    if not os.path.exists(filepath):
-        raise HTTPException(status_code=404, detail="File not found on disk")
-    return FileResponse(filepath, media_type="video/mp4")
 
 
 # --- API: Upload Clip ---
 def _get_duration(filepath: str) -> float:
-    """Get video duration using ffprobe."""
     try:
         result = subprocess.run(
             ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", filepath],
@@ -154,6 +200,43 @@ def _get_duration(filepath: str) -> float:
         return 0.0
 
 
+def _upload_to_github(filepath: str, filename: str) -> Optional[str]:
+    """Upload video file to GitHub Releases as a release asset. Returns download URL."""
+    if not GITHUB_TOKEN:
+        return None
+    try:
+        headers = {
+            "Authorization": f"token {GITHUB_TOKEN}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        # Get or create release
+        release_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/{GITHUB_RELEASE_TAG}"
+        r = http_requests.get(release_url, headers=headers)
+        if r.status_code == 404:
+            # Create release
+            r = http_requests.post(
+                f"https://api.github.com/repos/{GITHUB_REPO}/releases",
+                headers=headers,
+                json={"tag_name": GITHUB_RELEASE_TAG, "name": "Clips Storage", "draft": False}
+            )
+        release = r.json()
+        upload_url = release["upload_url"].replace("{?name,label}", "")
+
+        # Upload asset
+        with open(filepath, "rb") as f:
+            data = f.read()
+        r = http_requests.post(
+            f"{upload_url}?name={filename}",
+            headers={**headers, "Content-Type": "video/mp4"},
+            data=data
+        )
+        if r.status_code in (201, 200):
+            return r.json().get("browser_download_url")
+    except Exception as e:
+        print(f"GitHub upload failed: {e}")
+    return None
+
+
 @app.post("/api/streams/{stream_id}/clips")
 async def upload_clip(
     stream_id: int,
@@ -163,9 +246,10 @@ async def upload_clip(
     score: float = Form(5.0),
     caption_tiktok: Optional[str] = Form(None),
     caption_youtube: Optional[str] = Form(None),
+    video_url: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
-    """Upload a clip video file and create DB record."""
+    """Upload a clip video file and create DB record. Stores permanently on GitHub."""
     stream = db.query(Stream).filter(Stream.id == stream_id).first()
     if not stream:
         raise HTTPException(status_code=404, detail="Stream not found")
@@ -173,20 +257,20 @@ async def upload_clip(
     if platform not in ("tiktok", "youtube"):
         raise HTTPException(status_code=400, detail="Platform must be 'tiktok' or 'youtube'")
 
-    # Ensure clips dir exists
     os.makedirs(CLIPS_DIR, exist_ok=True)
-
-    # Save file
     filename = video.filename or f"clip_{stream_id}_{platform}.mp4"
     filepath = os.path.join(CLIPS_DIR, filename)
     content = await video.read()
     with open(filepath, "wb") as f:
         f.write(content)
 
-    # Get duration
     duration = _get_duration(filepath)
 
-    # Create DB record
+    # Upload to GitHub for permanent storage
+    permanent_url = video_url  # If URL provided directly, use it
+    if not permanent_url and GITHUB_TOKEN:
+        permanent_url = _upload_to_github(filepath, filename)
+
     clip = Clip(
         stream_id=stream_id,
         filename=filename,
@@ -197,6 +281,7 @@ async def upload_clip(
         caption_tiktok=caption_tiktok,
         caption_youtube=caption_youtube,
         duration=duration,
+        video_url=permanent_url,
     )
     db.add(clip)
     db.commit()
@@ -209,6 +294,7 @@ async def upload_clip(
         "title": clip.title,
         "duration": clip.duration,
         "status": clip.status,
+        "video_url": clip.video_url,
     }
 
 
@@ -235,18 +321,9 @@ def get_stats(db: Session = Depends(get_db)):
 
 @app.delete("/api/clips/{clip_id}")
 async def delete_clip(clip_id: int, db: Session = Depends(get_db)):
-    """Delete a clip and its video file."""
     clip = db.query(Clip).filter(Clip.id == clip_id).first()
     if not clip:
         raise HTTPException(status_code=404, detail="Clip not found")
-    
-    # Delete video file if exists
-    if clip.video_path and os.path.exists(clip.video_path):
-        try:
-            os.remove(clip.video_path)
-        except Exception:
-            pass
-    
     db.delete(clip)
     db.commit()
     return {"ok": True, "deleted_id": clip_id}
@@ -254,39 +331,22 @@ async def delete_clip(clip_id: int, db: Session = Depends(get_db)):
 
 @app.delete("/api/streams/{stream_id}/clips")
 async def delete_all_clips(stream_id: int, db: Session = Depends(get_db)):
-    """Delete ALL clips for a stream."""
-    clips = db.query(Clip).filter(Clip.id.in_(
-        [c.id for c in db.query(Clip).filter(Clip.stream_id == stream_id).all()]
-    )).all()
-    count = 0
+    clips = db.query(Clip).filter(Clip.stream_id == stream_id).all()
+    count = len(clips)
     for clip in clips:
-        if clip.video_path and os.path.exists(clip.video_path):
-            try:
-                os.remove(clip.video_path)
-            except Exception:
-                pass
         db.delete(clip)
-        count += 1
     db.commit()
     return {"ok": True, "deleted": count}
 
 
 @app.patch("/api/clips/{clip_id}")
 async def update_clip(clip_id: int, data: dict, db: Session = Depends(get_db)):
-    """Update clip captions/metadata."""
     clip = db.query(Clip).filter(Clip.id == clip_id).first()
     if not clip:
         raise HTTPException(status_code=404, detail="Clip not found")
-    
-    if "caption_tiktok" in data:
-        clip.caption_tiktok = data["caption_tiktok"]
-    if "caption_youtube" in data:
-        clip.caption_youtube = data["caption_youtube"]
-    if "title" in data:
-        clip.title = data["title"]
-    if "score" in data:
-        clip.score = data["score"]
-    
+    for field in ["caption_tiktok", "caption_youtube", "title", "score", "video_url", "status"]:
+        if field in data:
+            setattr(clip, field, data[field])
     db.commit()
     db.refresh(clip)
     return {"ok": True, "id": clip.id}

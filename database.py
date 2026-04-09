@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -6,7 +6,12 @@ import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./aurolo_studio.db")
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {})
+# Fix Railway Postgres URL (postgres:// → postgresql://)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+connect_args = {"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -34,9 +39,10 @@ class Clip(Base):
     title = Column(String, nullable=False)
     score = Column(Float, default=0.0)
     status = Column(String, default="pending")  # pending / approved / rejected
-    caption_tiktok = Column(String, nullable=True)
-    caption_youtube = Column(String, nullable=True)
+    caption_tiktok = Column(Text, nullable=True)
+    caption_youtube = Column(Text, nullable=True)
     duration = Column(Float, default=0.0)
+    video_url = Column(String, nullable=True)  # Permanent URL (GitHub Releases or CDN)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     stream = relationship("Stream", back_populates="clips")
