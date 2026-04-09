@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text, event
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -6,13 +6,13 @@ import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./aurolo_studio.db")
 
-# Fix Railway Postgres URL prefix
+# Fix Railway Postgres URL if ever used
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+pg8000://", 1)
-elif DATABASE_URL.startswith("postgresql://") and "pg8000" not in DATABASE_URL:
+elif DATABASE_URL.startswith("postgresql://") and "pg8000" not in DATABASE_URL and "+pg8000" not in DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+pg8000://", 1)
 
-print(f"[DB] Connecting to: {DATABASE_URL[:40]}...")
+print(f"[DB] Using: {DATABASE_URL[:50]}...")
 
 connect_args = {"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
 engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=True)
