@@ -126,13 +126,15 @@ function renderClips() {
 function renderGroupCard(group) {
     const key = group.title;
     const platform = activePlatform[key] || (group.tiktok ? 'tiktok' : 'youtube');
-    const clip = group[platform];
+    // If no youtube clip, fall back to tiktok clip (same video, different caption)
+    const clip = group[platform] || group.tiktok || group.youtube;
     if (!clip) return '';
 
     const statusClass = { pending: 'status-pending', approved: 'status-approved', rejected: 'status-rejected' };
     const statusLabel = { pending: 'PENDIENTE', approved: 'APROBADO', rejected: 'RECHAZADO' };
     const scoreBar = Math.min(clip.score * 10, 100);
-    const caption = platform === 'tiktok' ? clip.caption_tiktok : clip.caption_youtube;
+    // Always use caption for selected platform tab regardless of which clip record we have
+    const caption = platform === 'tiktok' ? (clip.caption_tiktok || clip.caption_youtube) : (clip.caption_youtube || clip.caption_tiktok);
 
     return `
     <div class="clip-card" data-id="${clip.id}" id="group-${encodeURIComponent(key)}">
@@ -156,11 +158,11 @@ function renderGroupCard(group) {
 
             <div class="platform-toggle">
                 <button onclick="switchPlatform('${escapeHtml(key)}', 'tiktok')"
-                    class="platform-btn ${platform === 'tiktok' ? 'active-tiktok' : ''} ${!group.tiktok ? 'disabled' : ''}">
+                    class="platform-btn ${platform === 'tiktok' ? 'active-tiktok' : ''}">
                     🎵 TikTok
                 </button>
                 <button onclick="switchPlatform('${escapeHtml(key)}', 'youtube')"
-                    class="platform-btn ${platform === 'youtube' ? 'active-youtube' : ''} ${!group.youtube ? 'disabled' : ''}">
+                    class="platform-btn ${platform === 'youtube' ? 'active-youtube' : ''}">
                     ▶️ YouTube
                 </button>
             </div>
