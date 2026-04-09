@@ -183,7 +183,21 @@ function renderGroupCard(group) {
 
 function switchPlatform(title, platform) {
     activePlatform[title] = platform;
-    renderClips();
+    // Only re-render the affected card, not the whole grid
+    const cardId = 'group-' + encodeURIComponent(title);
+    const card = document.getElementById(cardId);
+    if (!card) { renderClips(); return; }
+
+    // Find the group
+    const groups = groupClipsByMoment(allClips);
+    const group = groups.find(g => g.title === title);
+    if (!group) { renderClips(); return; }
+
+    // Replace just this card
+    const newCard = document.createElement('div');
+    newCard.innerHTML = renderGroupCard(group);
+    const newCardEl = newCard.firstElementChild;
+    card.replaceWith(newCardEl);
 }
 
 async function approveMoment(title) {
